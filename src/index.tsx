@@ -2,6 +2,7 @@ import express, { Request, Response } from 'express';
 import { Pool } from 'pg';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import PromptModel, { IPromptRequest } from './models/Prompt';
 
 dotenv.config();
 
@@ -18,6 +19,9 @@ const pool = new Pool({
     rejectUnauthorized: false
   }
 });
+
+// Initialize Prompt model
+const promptModel = new PromptModel(pool);
 
 // Root route
 app.get('/', async (_req: Request, res: Response) => {
@@ -59,24 +63,8 @@ app.get('/api/dbtest', async (_req: Request, res: Response) => {
   }
 });
 
-// Types
-interface Prompt {
-  id: number;
-  contact_id: string;
-  location_id: string;
-  custom_prompt: string;
-  created_at: Date;
-  updated_at: Date;
-}
-
-interface PromptRequest {
-  contactId: string;
-  locationId: string;
-  customPrompt: string;
-}
-
 // POST endpoint to save prompt
-app.post('/api/prompts', async (req: Request<{}, {}, PromptRequest>, res: Response) => {
+app.post('/api/prompts', async (req: Request<{}, {}, IPromptRequest>, res: Response) => {
   try {
     const { contactId, locationId, customPrompt } = req.body;
     
@@ -84,15 +72,13 @@ app.post('/api/prompts', async (req: Request<{}, {}, PromptRequest>, res: Respon
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    const query = `
-      INSERT INTO prompts (contact_id, location_id, custom_prompt)
-      VALUES ($1, $2, $3)
-      RETURNING *
-    `;
-    const values = [contactId, locationId, customPrompt];
-    const result = await pool.query<Prompt>(query, values);
+    const prompt = await promptModel.create({
+      contactId,
+      locationId,
+      customPrompt
+    });
     
-    res.status(201).json(result.rows[0]);
+    res.status(201).json(prompt);
   } catch (error) {
     console.error('Error saving prompt:', error);
     res.status(500).json({ 
@@ -104,25 +90,20 @@ app.post('/api/prompts', async (req: Request<{}, {}, PromptRequest>, res: Respon
 // GET endpoint to retrieve prompt
 app.get('/api/prompts', async (req: Request, res: Response) => {
   try {
-    const { contactId, locationId } = req.query;
+    const contactId = req.query.contactId as string;
+    const locationId = req.query.locationId as string;
     
     if (!contactId || !locationId) {
       return res.status(400).json({ error: 'Missing required query parameters' });
     }
 
-    const query = `
-      SELECT * FROM prompts 
-      WHERE contact_id = $1 AND location_id = $2
-      ORDER BY created_at DESC
-      LIMIT 1
-    `;
-    const values = [contactId, locationId];
-    const result = await pool.query<Prompt>(query, values);
+    const prompt = await promptModel.findOne(contactId, locationId);
     
-    if (result.rows.length === 0) {
+    if (!prompt) {
       return res.status(404).json({ message: 'Prompt not found' });
     }
-    res.json(result.rows[0]);
+    
+    res.json(prompt);
   } catch (error) {
     console.error('Error retrieving prompt:', error);
     res.status(500).json({ 
