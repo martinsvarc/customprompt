@@ -3,6 +3,7 @@ import { Pool } from 'pg';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import PromptModel, { IPromptRequest } from './models/Prompt';
+import LocationCallModel, { ILocationCallRequest } from './models/LocationCall';
 
 dotenv.config();
 
@@ -22,6 +23,9 @@ const pool = new Pool({
 
 // Initialize Prompt model
 const promptModel = new PromptModel(pool);
+
+// Initialize LocationCall model
+const locationCallModel = new LocationCallModel(pool);
 
 // Root route
 app.get('/', async (_req: Request, res: Response) => {
@@ -106,6 +110,67 @@ app.get('/api/prompts', async (req: Request, res: Response) => {
     res.json(prompt);
   } catch (error) {
     console.error('Error retrieving prompt:', error);
+    res.status(500).json({ 
+      error: error instanceof Error ? error.message : 'Unknown error' 
+    });
+  }
+});
+
+// GET endpoint to get call count for a location
+app.get('/api/location-calls', async (req: Request, res: Response) => {
+  try {
+    const locationId = req.query.locationId as string;
+    
+    if (!locationId) {
+      return res.status(400).json({ error: 'Missing locationId parameter' });
+    }
+
+    const count = await locationCallModel.getCount(locationId);
+    res.json({ count });
+  } catch (error) {
+    console.error('Error getting location call count:', error);
+    res.status(500).json({ 
+      error: error instanceof Error ? error.message : 'Unknown error' 
+    });
+  }
+});
+
+// POST endpoint to create location-call relationship
+app.post('/api/location-calls', async (req: Request<{}, {}, ILocationCallRequest>, res: Response) => {
+  try {
+    const { locationId, callId } = req.body;
+    
+    if (!locationId || !callId) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    const locationCall = await locationCallModel.create({
+      locationId,
+      callId
+    });
+    
+    res.status(201).json(locationCall);
+  } catch (error) {
+    console.error('Error creating location-call relationship:', error);
+    res.status(500).json({ 
+      error: error instanceof Error ? error.message : 'Unknown error' 
+    });
+  }
+});
+
+// DELETE endpoint to remove location-call relationship
+app.delete('/api/location-calls', async (req: Request, res: Response) => {
+  try {
+    const { locationId, callId } = req.body;
+    
+    if (!locationId || !callId) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    await locationCallModel.delete(locationId, callId);
+    res.status(204).send();
+  } catch (error) {
+    console.error('Error deleting location-call relationship:', error);
     res.status(500).json({ 
       error: error instanceof Error ? error.message : 'Unknown error' 
     });
